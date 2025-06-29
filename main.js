@@ -1,63 +1,67 @@
-// These common sounds have a higher weight. Other sounds are weighted at 10.
+// These common phrases have a higher weight. Other phrases are weighted at 10.
 const frequencyWeights = {
-  shi4: 100,
-  de5: 95,
-  bu4: 90,
-  le5: 88,
-  ren2: 85,
-  zai4: 83,
-  you3: 80,
-  wo3: 78,
-  ta1: 75,
-  zhe4: 73,
-  yi1: 70,
-  ge4: 68,
-  he2: 65,
-  ye3: 62,
-  zhong1: 60,
-  guo2: 58,
-  shang4: 55,
-  xue2: 53,
-  xiao3: 50,
-  hao3: 45,
-  ma1: 42,
-  ni3: 40,
-  men5: 38,
-  lai2: 36,
-  kan4: 34,
-  shuo1: 32,
-  xin1: 30,
-  dui4: 28,
-  na3: 26,
-  qu4: 24,
-  hui4: 22,
-  chi1: 20,
+  ni3hao3: 100,
+  xie4xie5: 95,
+  zao3shang4: 90,
+  wan3shang4: 88,
+  jin1tian1: 85,
+  ming2tian1: 83,
+  xian4zai4: 80,
+  yi3qian2: 78,
+  yi3hou4: 75,
+  zhe4ge4: 73,
+  na4ge4: 70,
+  shen2me5: 68,
+  zen3me5: 65,
+  wei4shen2me5: 62,
+  na3li3: 60,
+  ji3dian3: 58,
+  duo1shao3: 55,
+  he2shui4: 53,
+  chi1fan4: 50,
+  shui4jiao4: 45,
+  shang4ban1: 42,
+  xia4ban1: 40,
+  shang4xue2: 38,
+  xia4xue2: 36,
+  kan4dian4shi4: 34,
+  ting1yin1yue4: 32,
+  du2shu1: 30,
+  xie3zi4: 28,
+  hua4hua4: 26,
+  chang4ge1: 24,
+  tiao4wu3: 22,
+  da3qiu2: 20,
+  you2yong3: 18,
+  pao3bu4: 16,
+  san4bu4: 14,
+  mai3dong1xi1: 12,
+  hua1qian2: 10,
 };
 
-// Fill any missing sounds with default weight 10
-for (const key in pinyinPaths) {
-  const base = key.split(".")[0];
-  if (!(base in frequencyWeights)) frequencyWeights[base] = 10;
+// Fill any missing phrases with default weight 10
+for (const key in phrases) {
+  if (!(key in frequencyWeights)) frequencyWeights[key] = 10;
 }
 
 // Persistent score storage
 const SCORE_KEY = "pinyinScoreTracker";
 let scoreTracker = JSON.parse(localStorage.getItem(SCORE_KEY) || "{}");
 
-function getScore(base) {
-  return scoreTracker[base] ?? 0;
+function getScore(phrase) {
+  return scoreTracker[phrase] ?? 0;
 }
-function setScore(base, val) {
-  scoreTracker[base] = val;
+function setScore(phrase, val) {
+  scoreTracker[phrase] = val;
   localStorage.setItem(SCORE_KEY, JSON.stringify(scoreTracker));
   updateScoreInfo();
 }
 
-function calculateWeight(base) {
-  const baseScore = getScore(base);
-  const baseFreq = frequencyWeights[base] ?? 10;
-  const scoreFactor = Math.max(1, 5 - baseScore);
-  return baseFreq * scoreFactor;
+function calculateWeight(phrase) {
+  const phraseScore = getScore(phrase);
+  const phraseFreq = frequencyWeights[phrase] ?? 10;
+  const scoreFactor = Math.max(1, 5 - phraseScore);
+  return phraseFreq * scoreFactor;
 }
 
 // Convert numbered pinyin to accented
@@ -70,16 +74,31 @@ function toAccented(pinyin) {
     u: ["ū", "ú", "ǔ", "ù"],
     ü: ["ǖ", "ǘ", "ǚ", "ǜ"],
   };
-  const m = pinyin.match(/(.*?)([1-4])/);
-  if (!m) return pinyin;
-  const [_, base, t] = m;
-  const tone = Number(t) - 1;
-  for (const v of ["a", "o", "e", "i", "u", "ü"]) {
-    if (base.includes(v)) {
-      return base.replace(v, toneMarks[v][tone]);
-    }
-  }
-  return base;
+
+  // Split the phrase into individual syllables
+  const syllables = pinyin.match(/[a-zü]+[1-5]?/g) || [pinyin];
+
+  return syllables
+    .map((syllable) => {
+      const m = syllable.match(/(.*?)([1-5])/);
+      if (!m) return syllable; // No tone number, return as is
+
+      const [_, base, t] = m;
+      const tone = Number(t);
+
+      // Handle neutral tone (5) - return base without tone mark
+      if (tone === 5) return base;
+
+      // Handle tones 1-4
+      const toneIndex = tone - 1;
+      for (const v of ["a", "o", "e", "i", "u", "ü"]) {
+        if (base.includes(v)) {
+          return base.replace(v, toneMarks[v][toneIndex]);
+        }
+      }
+      return base;
+    })
+    .join(" ");
 }
 
 // Weighted random choice
@@ -100,8 +119,8 @@ const wrongBtn = document.getElementById("wrong-btn");
 const pinyinDisplay = document.getElementById("pinyin-display");
 const scoreInfo = document.getElementById("score-info");
 
-let currentBases = [];
-let currentSelected = [];
+let currentPhrase = "";
+let currentPinyin = "";
 
 function updateScoreInfo() {
   scoreInfo.textContent = "Statistics";
@@ -113,13 +132,13 @@ function showPracticePopup() {
   const modal = document.getElementById("practiceModal");
   const practiceList = document.getElementById("practiceList");
 
-  // Get all tracked syllables and sort by score (lowest first - need most practice)
+  // Get all tracked phrases and sort by score (lowest first - need most practice)
   const practiceItems = Object.entries(scoreTracker)
     .sort((a, b) => a[1] - b[1]) // Sort by score ascending
     .slice(0, 30) // Only take top 30 most difficult
-    .map(([base, score]) => ({ base, score }));
+    .map(([phrase, score]) => ({ phrase, score }));
 
-  const totalBases = Object.keys(scoreTracker).length;
+  const totalPhrases = Object.keys(scoreTracker).length;
 
   if (practiceItems.length === 0) {
     practiceList.innerHTML =
@@ -128,22 +147,22 @@ function showPracticePopup() {
     practiceList.innerHTML =
       `
           <div style="text-align: center; margin-bottom: 15px; color: #666; font-size: 14px;">
-              Tracked sounds: ${totalBases}
+              Tracked phrases: ${totalPhrases}
           </div>
           <div class="practice-header">
-              <div>Sound</div>
+              <div>Phrase</div>
               <div>Score</div>
           </div>
       ` +
       practiceItems
-        .map(({ base, score }) => {
+        .map(({ phrase, score }) => {
           const scoreClass =
             score < 0 ? "score-low" : score < 5 ? "score-medium" : "score-high";
           return `
-              <div class="practice-item" onclick="playSound('${base}')">
+              <div class="practice-item" onclick="playPhrase('${phrase}')">
                   <div class="sound-text">
                       <span class="speaker-icon">🎧</span>
-                      ${toAccented(base)}
+                      ${toAccented(phrase)} - ${phrases[phrase] || ""}
                   </div>
                   <div class="score-badge ${scoreClass}">${score}</div>
               </div>
@@ -155,18 +174,22 @@ function showPracticePopup() {
   modal.style.display = "block";
 }
 
-function playSound(base) {
-  // Find the corresponding audio file
-  const audioFile = Object.keys(pinyinPaths).find((file) =>
-    file.startsWith(base + ".")
-  );
-  if (audioFile) {
-    const url = pinyinPaths[audioFile];
-    if (url) {
-      const audio = new Audio(url);
-      audio.play().catch((e) => console.error("Audio error:", e));
+function playPhrase(phrase) {
+  // Find the corresponding audio files for each syllable in the phrase
+  const syllables = phrase.match(/[a-zü]+[1-5]?/g) || [phrase];
+
+  syllables.forEach((syllable) => {
+    const audioFile = Object.keys(pinyinPaths).find((file) =>
+      file.startsWith(syllable + ".")
+    );
+    if (audioFile) {
+      const url = pinyinPaths[audioFile];
+      if (url) {
+        const audio = new Audio(url);
+        audio.play().catch((e) => console.error("Audio error:", e));
+      }
     }
-  }
+  });
 }
 
 function closeModal() {
@@ -190,30 +213,24 @@ document
     }
   });
 
-// Make playSound globally accessible
-window.playSound = playSound;
+// Make playPhrase globally accessible
+window.playPhrase = playPhrase;
 
 function generatePinyin() {
-  if (!Object.keys(pinyinPaths).length) {
-    alert("Please populate pinyinPaths with valid MP3 URLs first.");
+  if (!Object.keys(phrases).length) {
+    alert("Please populate phrases with valid phrases first.");
     return;
   }
 
-  const choices = Object.keys(pinyinPaths);
-  const weights = choices.map((s) => calculateWeight(s.split(".")[0]));
+  const phraseChoices = Object.keys(phrases);
+  const weights = phraseChoices.map((phrase) => calculateWeight(phrase));
 
-  currentBases = [];
-  currentSelected = [];
-  const howMany = 1 + Math.floor(Math.random() * 2); // 1 or 2
+  currentPhrase = weightedRandom(phraseChoices, weights);
+  currentPinyin = currentPhrase;
 
-  for (let i = 0; i < howMany; i++) {
-    const file = weightedRandom(choices, weights);
-    currentSelected.push(file);
-    currentBases.push(file.split(".")[0]);
-  }
-
-  // Show the pinyin
-  pinyinDisplay.textContent = currentBases.map(toAccented).join(" ");
+  // Show the pinyin and Chinese characters
+  const chineseChars = phrases[currentPhrase] || "";
+  pinyinDisplay.textContent = `${toAccented(currentPinyin)} - ${chineseChars}`;
 
   // Enable play button, disable right/wrong buttons initially
   playBtn.disabled = false;
@@ -222,26 +239,34 @@ function generatePinyin() {
 }
 
 async function playAudio() {
-  if (!currentSelected.length) {
-    alert("No pinyin selected. Please wait for the next one.");
+  if (!currentPinyin) {
+    alert("No phrase selected. Please wait for the next one.");
     return;
   }
 
   playBtn.disabled = true;
 
-  // Play the audio
-  for (const file of currentSelected) {
-    const url = pinyinPaths[file];
-    if (!url) continue;
-    try {
-      await new Promise((resolve, reject) => {
-        const audio = new Audio(url);
-        audio.onended = resolve;
-        audio.onerror = reject;
-        audio.play().catch(reject);
-      });
-    } catch (e) {
-      console.error("Audio error:", e);
+  // Split the phrase into syllables and play each one
+  const syllables = currentPinyin.match(/[a-zü]+[1-5]?/g) || [currentPinyin];
+
+  for (const syllable of syllables) {
+    const audioFile = Object.keys(pinyinPaths).find((file) =>
+      file.startsWith(syllable + ".")
+    );
+    if (audioFile) {
+      const url = pinyinPaths[audioFile];
+      if (url) {
+        try {
+          await new Promise((resolve, reject) => {
+            const audio = new Audio(url);
+            audio.onended = resolve;
+            audio.onerror = reject;
+            audio.play().catch(reject);
+          });
+        } catch (e) {
+          console.error("Audio error:", e);
+        }
+      }
     }
   }
 
@@ -252,15 +277,13 @@ async function playAudio() {
 }
 
 function adjustScores(correct) {
-  currentBases.forEach((base) => {
-    let val = getScore(base);
-    if (correct) {
-      val = Math.min(val + 1, 10);
-    } else {
-      val = val - 1;
-    }
-    setScore(base, val);
-  });
+  let val = getScore(currentPhrase);
+  if (correct) {
+    val = Math.min(val + 1, 10);
+  } else {
+    val = val - 1;
+  }
+  setScore(currentPhrase, val);
 }
 
 playBtn.addEventListener("click", playAudio);
@@ -271,7 +294,7 @@ rightBtn.addEventListener("click", () => {
   rightBtn.disabled = true;
   wrongBtn.disabled = true;
 
-  // Automatically generate next pinyin after a short delay
+  // Automatically generate next phrase after a short delay
   setTimeout(() => {
     generatePinyin();
   }, 1000);
@@ -283,7 +306,7 @@ wrongBtn.addEventListener("click", () => {
   rightBtn.disabled = true;
   wrongBtn.disabled = true;
 
-  // Automatically generate next pinyin after a short delay
+  // Automatically generate next phrase after a short delay
   setTimeout(() => {
     generatePinyin();
   }, 1000);
