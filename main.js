@@ -259,7 +259,7 @@ async function playAudio() {
         try {
           await new Promise((resolve, reject) => {
             const audio = new Audio(url);
-            audio.onended = resolve;
+            audio.onended = resolve; // No delay
             audio.onerror = reject;
             audio.play().catch(reject);
           });
