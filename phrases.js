@@ -95,5 +95,5 @@ phrases = {
   hao3wan2ma5: "好玩吗",
   kan4yi2xia4: "看一下",
   wo3zhi1dao4: "我知道",
-  wo3bu4zhi1: "我不知",
+  wo3bu4zhi1dao4: "我不知道",
 };

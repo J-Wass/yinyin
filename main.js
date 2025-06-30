@@ -178,18 +178,29 @@ function playPhrase(phrase) {
   // Find the corresponding audio files for each syllable in the phrase
   const syllables = phrase.match(/[a-zü]+[1-5]?/g) || [phrase];
 
-  syllables.forEach((syllable) => {
-    const audioFile = Object.keys(pinyinPaths).find((file) =>
-      file.startsWith(syllable + ".")
-    );
-    if (audioFile) {
-      const url = pinyinPaths[audioFile];
-      if (url) {
-        const audio = new Audio(url);
-        audio.play().catch((e) => console.error("Audio error:", e));
+  // Play each syllable in sequence
+  (async function playSequentially() {
+    for (const syllable of syllables) {
+      const audioFile = Object.keys(pinyinPaths).find((file) =>
+        file.startsWith(syllable + ".")
+      );
+      if (audioFile) {
+        const url = pinyinPaths[audioFile];
+        if (url) {
+          try {
+            await new Promise((resolve, reject) => {
+              const audio = new Audio(url);
+              audio.onended = resolve;
+              audio.onerror = reject;
+              audio.play().catch(reject);
+            });
+          } catch (e) {
+            console.error("Audio error:", e);
+          }
+        }
       }
     }
-  });
+  })();
 }
 
 function closeModal() {
@@ -228,9 +239,11 @@ function generatePinyin() {
   currentPhrase = weightedRandom(phraseChoices, weights);
   currentPinyin = currentPhrase;
 
-  // Show the pinyin and Chinese characters
+  // Show the pinyin, Chinese characters, and English translation
   const chineseChars = phrases[currentPhrase] || "";
-  pinyinDisplay.textContent = `${toAccented(currentPinyin)} - ${chineseChars}`;
+  pinyinDisplay.textContent = `${toAccented(
+    currentPinyin
+  )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
 
   // Enable play button, disable right/wrong buttons initially
   playBtn.disabled = false;
@@ -246,9 +259,13 @@ async function playAudio() {
 
   playBtn.disabled = true;
 
+  const chineseChars = phrases[currentPinyin] || "";
+
   // Split the phrase into syllables and play each one
   const syllables = currentPinyin.match(/[a-zü]+[1-5]?/g) || [currentPinyin];
+  const chineseCharsArray = chineseChars.split("");
 
+  // Highlight each syllable as it is played
   for (const syllable of syllables) {
     const audioFile = Object.keys(pinyinPaths).find((file) =>
       file.startsWith(syllable + ".")
@@ -259,6 +276,28 @@ async function playAudio() {
         try {
           await new Promise((resolve, reject) => {
             const audio = new Audio(url);
+            audio.onplay = () => {
+              // Highlight the current syllable and corresponding Chinese character in light gray, keeping the English translation visible
+              pinyinDisplay.innerHTML =
+                syllables
+                  .map((s, index) =>
+                    s === syllable
+                      ? `<span style='background-color: #d3d3d3;'>${toAccented(
+                          s
+                        )}</span>`
+                      : toAccented(s)
+                  )
+                  .join(" ") +
+                ` - ` +
+                chineseCharsArray
+                  .map((char, index) =>
+                    syllables[index] === syllable
+                      ? `<span style='background-color: #d3d3d3;'>${char}</span>`
+                      : char
+                  )
+                  .join("") +
+                ` (${translations[currentPinyin] || ""})`;
+            };
             audio.onended = resolve; // No delay
             audio.onerror = reject;
             audio.play().catch(reject);
@@ -270,10 +309,44 @@ async function playAudio() {
     }
   }
 
-  // Re-enable play button and enable right/wrong buttons after audio finishes
-  playBtn.disabled = false;
-  rightBtn.disabled = false;
-  wrongBtn.disabled = false;
+  // Use Mandarin characters for TTS with increased volume and delay
+  const utterance = new SpeechSynthesisUtterance(chineseChars);
+  utterance.lang = "zh-CN"; // Set language to Chinese
+  utterance.rate = 1.0; // Normal rate
+  utterance.pitch = 1.0; // Normal pitch
+  utterance.volume = 1.0; // Maximum volume
+
+  // Play TTS only if the pinyin has more than one syllable
+  if (syllables.length > 1) {
+    setTimeout(() => {
+      pinyinDisplay.innerHTML = `<span style='background-color: #d3d3d3;'>${toAccented(
+        currentPinyin
+      )}</span> - <span style='background-color: #d3d3d3;'>${chineseChars}</span> (${
+        translations[currentPinyin] || ""
+      })`;
+      speechSynthesis.speak(utterance);
+
+      // Remove the highlight after TTS is done
+      utterance.onend = () => {
+        pinyinDisplay.innerHTML = `${toAccented(
+          currentPinyin
+        )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
+        // Re-enable play button and enable right/wrong buttons if TTS is not played
+        playBtn.disabled = false;
+        rightBtn.disabled = false;
+        wrongBtn.disabled = false;
+      };
+    }, 20); // Reduced delay to 20ms for quicker transition
+  } else {
+    playBtn.disabled = false;
+    rightBtn.disabled = false;
+    wrongBtn.disabled = false;
+
+    // Unhighlight the text for single-syllable phrases
+    pinyinDisplay.innerHTML = `${toAccented(
+      currentPinyin
+    )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
+  }
 }
 
 function adjustScores(correct) {
