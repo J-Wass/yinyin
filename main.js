@@ -265,7 +265,8 @@ async function playAudio() {
   const syllables = currentPinyin.match(/[a-zü]+[1-5]?/g) || [currentPinyin];
   const chineseCharsArray = chineseChars.split("");
 
-  // Highlight each syllable as it is played
+  // Remove TTS functionality
+  // Play each syllable in sequence without TTS at the end
   for (const syllable of syllables) {
     const audioFile = Object.keys(pinyinPaths).find((file) =>
       file.startsWith(syllable + ".")
@@ -298,7 +299,7 @@ async function playAudio() {
                   .join("") +
                 ` (${translations[currentPinyin] || ""})`;
             };
-            audio.onended = resolve; // No delay
+            audio.onended = resolve;
             audio.onerror = reject;
             audio.play().catch(reject);
           });
@@ -309,44 +310,15 @@ async function playAudio() {
     }
   }
 
-  // Use Mandarin characters for TTS with increased volume and delay
-  const utterance = new SpeechSynthesisUtterance(chineseChars);
-  utterance.lang = "zh-CN"; // Set language to Chinese
-  utterance.rate = 1.0; // Normal rate
-  utterance.pitch = 1.0; // Normal pitch
-  utterance.volume = 1.0; // Maximum volume
+  // After all syllables are played, reset the display to show pinyin, Mandarin characters, and translation without highlight
+  pinyinDisplay.innerHTML = `${toAccented(currentPinyin)} - ${chineseChars} (${
+    translations[currentPinyin] || ""
+  })`;
 
-  // Play TTS only if the pinyin has more than one syllable
-  if (syllables.length > 1) {
-    setTimeout(() => {
-      pinyinDisplay.innerHTML = `<span style='background-color: #d3d3d3;'>${toAccented(
-        currentPinyin
-      )}</span> - <span style='background-color: #d3d3d3;'>${chineseChars}</span> (${
-        translations[currentPinyin] || ""
-      })`;
-      speechSynthesis.speak(utterance);
-
-      // Remove the highlight after TTS is done
-      utterance.onend = () => {
-        pinyinDisplay.innerHTML = `${toAccented(
-          currentPinyin
-        )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
-        // Re-enable play button and enable right/wrong buttons if TTS is not played
-        playBtn.disabled = false;
-        rightBtn.disabled = false;
-        wrongBtn.disabled = false;
-      };
-    }, 20); // Reduced delay to 20ms for quicker transition
-  } else {
-    playBtn.disabled = false;
-    rightBtn.disabled = false;
-    wrongBtn.disabled = false;
-
-    // Unhighlight the text for single-syllable phrases
-    pinyinDisplay.innerHTML = `${toAccented(
-      currentPinyin
-    )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
-  }
+  // Re-enable play button and enable right/wrong buttons after audio finishes
+  playBtn.disabled = false;
+  rightBtn.disabled = false;
+  wrongBtn.disabled = false;
 }
 
 function adjustScores(correct) {
