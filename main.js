@@ -1,3 +1,24 @@
+// --- Combine phrases and translations into one data structure ---
+const phraseData = {};
+if (typeof phrases !== "undefined" && typeof translations !== "undefined") {
+  for (const key in phrases) {
+    phraseData[key] = {
+      cn: phrases[key],
+      en: translations[key] || "",
+    };
+  }
+}
+
+function getChinese(key) {
+  return phraseData[key]?.cn || "";
+}
+
+function getEnglish(key) {
+  return phraseData[key]?.en || "";
+}
+
+// From now on, prefer phraseData over raw phrases/translations
+
 // These common phrases have a higher weight. Other phrases are weighted at 10.
 const frequencyWeights = {
   ni3hao3: 100,
@@ -40,7 +61,7 @@ const frequencyWeights = {
 };
 
 // Fill any missing phrases with default weight 10
-for (const key in phrases) {
+for (const key in phraseData) {
   if (!(key in frequencyWeights)) frequencyWeights[key] = 10;
 }
 
@@ -162,7 +183,7 @@ function showPracticePopup() {
               <div class="practice-item" onclick="playPhrase('${phrase}')">
                   <div class="sound-text">
                       <span class="speaker-icon">🎧</span>
-                      ${toAccented(phrase)} - ${phrases[phrase] || ""}
+                      ${toAccented(phrase)} - ${getChinese(phrase)}
                   </div>
                   <div class="score-badge ${scoreClass}">${score}</div>
               </div>
@@ -228,22 +249,22 @@ document
 window.playPhrase = playPhrase;
 
 function generatePinyin() {
-  if (!Object.keys(phrases).length) {
+  if (!Object.keys(phraseData).length) {
     alert("Please populate phrases with valid phrases first.");
     return;
   }
 
-  const phraseChoices = Object.keys(phrases);
+  const phraseChoices = Object.keys(phraseData);
   const weights = phraseChoices.map((phrase) => calculateWeight(phrase));
 
   currentPhrase = weightedRandom(phraseChoices, weights);
   currentPinyin = currentPhrase;
 
   // Show the pinyin, Chinese characters, and English translation
-  const chineseChars = phrases[currentPhrase] || "";
+  const chineseChars = getChinese(currentPhrase);
   pinyinDisplay.textContent = `${toAccented(
     currentPinyin
-  )} - ${chineseChars} (${translations[currentPinyin] || ""})`;
+  )} - ${chineseChars} (${getEnglish(currentPinyin)})`;
 
   // Enable play button, disable right/wrong buttons initially
   playBtn.disabled = false;
@@ -259,7 +280,7 @@ async function playAudio() {
 
   playBtn.disabled = true;
 
-  const chineseChars = phrases[currentPinyin] || "";
+  const chineseChars = getChinese(currentPinyin);
 
   // Split the phrase into syllables and play each one
   const syllables = currentPinyin.match(/[a-zü]+[1-5]?/g) || [currentPinyin];
@@ -297,7 +318,7 @@ async function playAudio() {
                       : char
                   )
                   .join("") +
-                ` (${translations[currentPinyin] || ""})`;
+                ` (${getEnglish(currentPinyin)})`;
             };
             audio.onended = resolve;
             audio.onerror = reject;
@@ -311,9 +332,9 @@ async function playAudio() {
   }
 
   // After all syllables are played, reset the display to show pinyin, Mandarin characters, and translation without highlight
-  pinyinDisplay.innerHTML = `${toAccented(currentPinyin)} - ${chineseChars} (${
-    translations[currentPinyin] || ""
-  })`;
+  pinyinDisplay.innerHTML = `${toAccented(
+    currentPinyin
+  )} - ${chineseChars} (${getEnglish(currentPinyin)})`;
 
   // Re-enable play button and enable right/wrong buttons after audio finishes
   playBtn.disabled = false;
