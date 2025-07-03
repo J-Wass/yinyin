@@ -195,33 +195,64 @@ function showPracticePopup() {
   modal.style.display = "block";
 }
 
-function playPhrase(phrase) {
-  // Find the corresponding audio files for each syllable in the phrase
-  const syllables = phrase.match(/[a-zü]+[1-5]?/g) || [phrase];
+// Helper to speak Chinese text with fallbacks for broad browser support
+async function speak(text, { lang = "zh-CN", rate = 0.9 } = {}) {
+  // Primary: Web Speech API
+  if ("speechSynthesis" in window) {
+    // Wait for voices to be loaded (Safari/Firefox may load async)
+    const getVoices = () =>
+      new Promise((resolve) => {
+        let voices = speechSynthesis.getVoices();
+        if (voices && voices.length) return resolve(voices);
+        // If voices not yet loaded, wait for event once
+        const handle = () => {
+          voices = speechSynthesis.getVoices();
+          resolve(voices);
+        };
+        speechSynthesis.addEventListener("voiceschanged", handle, {
+          once: true,
+        });
+      });
 
-  // Play each syllable in sequence
-  (async function playSequentially() {
-    for (const syllable of syllables) {
-      const audioFile = Object.keys(pinyinPaths).find((file) =>
-        file.startsWith(syllable + ".")
-      );
-      if (audioFile) {
-        const url = pinyinPaths[audioFile];
-        if (url) {
-          try {
-            await new Promise((resolve, reject) => {
-              const audio = new Audio(url);
-              audio.onended = resolve;
-              audio.onerror = reject;
-              audio.play().catch(reject);
-            });
-          } catch (e) {
-            console.error("Audio error:", e);
-          }
+    const voices = await getVoices();
+    const voice =
+      voices.find(
+        (v) => v.lang && v.lang.toLowerCase().startsWith(lang.toLowerCase())
+      ) || voices.find((v) => v.lang && v.lang.toLowerCase().includes("zh"));
+
+    if (voice) {
+      return new Promise((resolve) => {
+        try {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.voice = voice;
+          utter.rate = rate;
+          utter.onend = resolve;
+          utter.onerror = resolve; // resolve even on error to avoid hanging
+          speechSynthesis.cancel(); // stop any ongoing speech to avoid queueing
+          speechSynthesis.speak(utter);
+        } catch (e) {
+          console.warn("SpeechSynthesis failed, falling back to remote TTS", e);
+          resolve();
         }
-      }
+      });
     }
-  })();
+  }
+
+  // Fallback: Google Translate TTS (audio element) – works in most browsers without CORS issues
+  return new Promise((resolve) => {
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(
+      text
+    )}`;
+    const audio = new Audio(url);
+    audio.onended = resolve;
+    audio.onerror = resolve;
+    audio.play().catch(resolve);
+  });
+}
+
+function playPhrase(phrase) {
+  const chineseChars = getChinese(phrase);
+  speak(chineseChars); // Fire-and-forget
 }
 
 function closeModal() {
@@ -282,61 +313,53 @@ async function playAudio() {
 
   const chineseChars = getChinese(currentPinyin);
 
-  // Split the phrase into syllables and play each one
+  // Play individual syllable clips first
   const syllables = currentPinyin.match(/[a-zü]+[1-5]?/g) || [currentPinyin];
   const chineseCharsArray = chineseChars.split("");
 
-  // Remove TTS functionality
-  // Play each syllable in sequence without TTS at the end
   for (const syllable of syllables) {
     const audioFile = Object.keys(pinyinPaths).find((file) =>
       file.startsWith(syllable + ".")
     );
-    if (audioFile) {
-      const url = pinyinPaths[audioFile];
-      if (url) {
-        try {
-          await new Promise((resolve, reject) => {
-            const audio = new Audio(url);
-            audio.onplay = () => {
-              // Highlight the current syllable and corresponding Chinese character in light gray, keeping the English translation visible
-              pinyinDisplay.innerHTML =
-                syllables
-                  .map((s, index) =>
-                    s === syllable
-                      ? `<span style='background-color: #d3d3d3;'>${toAccented(
-                          s
-                        )}</span>`
-                      : toAccented(s)
-                  )
-                  .join(" ") +
-                ` - ` +
-                chineseCharsArray
-                  .map((char, index) =>
-                    syllables[index] === syllable
-                      ? `<span style='background-color: #d3d3d3;'>${char}</span>`
-                      : char
-                  )
-                  .join("") +
-                ` (${getEnglish(currentPinyin)})`;
-            };
-            audio.onended = resolve;
-            audio.onerror = reject;
-            audio.play().catch(reject);
-          });
-        } catch (e) {
-          console.error("Audio error:", e);
-        }
-      }
-    }
+    if (!audioFile) continue;
+    const url = pinyinPaths[audioFile];
+    await new Promise((res) => {
+      const audio = new Audio(url);
+      audio.onplay = () => {
+        // highlight current syllable + char
+        pinyinDisplay.innerHTML =
+          syllables
+            .map((s) =>
+              s === syllable
+                ? `<span style='background:#d3d3d3;'>${toAccented(s)}</span>`
+                : toAccented(s)
+            )
+            .join(" ") +
+          " - " +
+          chineseCharsArray
+            .map((c, idx) =>
+              syllables[idx] === syllable
+                ? `<span style='background:#d3d3d3;'>${c}</span>`
+                : c
+            )
+            .join("") +
+          ` (${getEnglish(currentPinyin)})`;
+      };
+      audio.onended = res;
+      audio.onerror = res;
+      audio.play().catch(res);
+    });
   }
 
-  // After all syllables are played, reset the display to show pinyin, Mandarin characters, and translation without highlight
+  // Reset display without highlight
   pinyinDisplay.innerHTML = `${toAccented(
     currentPinyin
   )} - ${chineseChars} (${getEnglish(currentPinyin)})`;
 
-  // Re-enable play button and enable right/wrong buttons after audio finishes
+  // Kick off Chinese TTS, but DON'T await – this removes the post-speech pause
+  speak(chineseChars);
+
+  // Re-enable buttons immediately
   playBtn.disabled = false;
   rightBtn.disabled = false;
   wrongBtn.disabled = false;
